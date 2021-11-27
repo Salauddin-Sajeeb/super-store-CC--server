@@ -7,6 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET)
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.d0ttl.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
@@ -44,10 +45,17 @@ async function run() {
         })
         //get order
         app.get('/orders', async (req, res) => {
-            const cursor = orderCollection.find({});
+            let query = {};
+            const email = req.query.email;
+            if (email) {
+                query = { email: email };
+            }
+
+            const cursor = orderCollection.find(query);
             const products = await cursor.toArray();
             res.send(products);
         })
+
 
         app.post('/users', async (req, res) => {
             const user = req.body;
@@ -95,8 +103,29 @@ async function run() {
         //delete
         app.delete('/orders/:id', async (req, res) => {
             const id = req.params.id;
+            console.log(id)
             const query = { _id: ObjectId(id) };
             const result = await orderCollection.deleteOne(query);
+            res.json(result)
+        })
+        app.get('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            console.log(id)
+            const query = { _id: ObjectId(id) };
+            const result = await orderCollection.findOne(query);
+            res.json(result)
+        })
+
+        app.put('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            const payment = req.body;
+            const filter = { _id: ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    payment: payment
+                }
+            };
+            const result = await orderCollection.updateOne(filter, updateDoc);
             res.json(result)
         })
 
@@ -115,7 +144,20 @@ async function run() {
             res.send(products);
         })
 
+        app.post('/create-payment-intent', async (req, res) => {
+            const paymentInfo = req.body;
+            const amount = paymentInfo.price * 100;
 
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+
+            });
+            res.json({ clientSecret: paymentIntent.client_secret })
+
+
+        })
     }
     finally {
 
